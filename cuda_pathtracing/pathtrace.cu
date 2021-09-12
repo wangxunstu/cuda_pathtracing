@@ -22,7 +22,7 @@
 #include <device_launch_parameters.h>
 
 #define M_PI 3.14159265359f  // pi
-#define samps 1024 // samples 
+#define samps 512 // samples 
 
 #define bounce 4
 
@@ -44,12 +44,12 @@ texture<float4, 1, cudaReadModeElementType> g_trianglesTexture;
 
 
 struct Ray {
-    float3 orig; // ray origin
-    float3 dir;  // ray direction 
+    float3 orig; 
+    float3 dir;   
     __device__ Ray(float3 o_, float3 d_) : orig(o_), dir(d_) {}
 };
 
-enum Refl_t { DIFF, SPEC, REFR };  // material types, used in radiance(), only DIFF used here
+enum Refl_t { DIFF, SPEC, REFR ,METAL};
 
 struct Sphere 
 {
@@ -70,6 +70,8 @@ struct Sphere
     }
 };
 
+
+
 __device__ Sphere spheres[] = {
 
     { 16.f, { 0.0f,100.8, 0 }, { 6, 4, 2 }, { 0.f, 0.f, 0.f }, DIFF },  // 37, 34, 30  X: links rechts Y: op neer
@@ -80,15 +82,16 @@ __device__ Sphere spheres[] = {
 };
 
 
-__device__ inline bool intersect_scene(const Ray& r, float& t, int& id) {
+__device__ inline bool intersect_scene(const Ray& r, float& t, int& id) 
+{
 
-    float n = sizeof(spheres) / sizeof(Sphere), d, inf = t = 1e20;  // t is distance to closest intersection, initialise t to a huge number outside scene
-    for (int i = int(n); i--;)  // test all scene objects for intersection
-        if ((d = spheres[i].intersect_sphere(r)) && d < t) {  // if newly computed intersection distance d is smaller than current closest intersection distance
-            t = d;  // keep track of distance along ray to closest intersection point 
-            id = i; // and closest intersected object
+    float n = sizeof(spheres) / sizeof(Sphere), d, inf = t = 1e20;
+    for (int i = int(n); i--;)  
+        if ((d = spheres[i].intersect_sphere(r)) && d < t) { 
+            t = d;  
+            id = i; 
         }
-    return t < inf; // returns true if an intersection with the scene occurred, false when no hit
+    return t < inf;
 }
 
 __device__ static float getrandom(unsigned int* seed0, unsigned int* seed1) {
@@ -260,7 +263,8 @@ __device__ bool BVH_IntersectTriangles(
             // loop over every triangle in the leaf node
             // data.w is start index in triangle list
             // data.x stores number of triangles in leafnode (the bitwise AND operation extracts the triangle number)
-            for (unsigned i = data.w; i < data.w + (data.x & 0x7fffffff); i++) {
+            for (unsigned i = data.w; i < data.w + (data.x & 0x7fffffff); i++) 
+            {
 
                 // original, "pure" BVH form...
                 //const Triangle& triangle = *(*it);
@@ -341,140 +345,178 @@ __device__ bool BVH_IntersectTriangles(
 __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int* s2,
     Triangle* cudaTriangles, int* cudaBVHindexedOrTriLists,
     float* cudaBVHLimits, float* cudaTriangleIntersectionData, int* cudaTriIdxList)
-{ // returns ray color
+{ 
+
+    r.dir = normalize(r.dir);
 
     float3 accucolor = make_float3(0.0f, 0.0f, 0.0f); // accumulates ray colour with each iteration through bounce loop
     float3 mask = make_float3(1.0f, 1.0f, 1.0f);
 
-    // ray bounce loop (no Russian Roulette used) 
+    int sphere_id   = -1;
+    int triangle_id = -1;
+    int pBestTriIdx = -1;
+    int geomtype    = 1;
+
+
+    Refl_t refltype  = DIFF;
+
     for (int bounces = 0; bounces < bounce; bounces++) 
-    {  // iteration up to 4 bounces (replaces recursion in CPU code)
+    { 
 
-        float t;           // distance to closest intersection 
-        int id = 0;        // index of closest intersected sphere 
+       float t;           // distance to closest intersection 
+       int id = 0;        // index of closest intersected sphere 
 
-        float3 col;
+       float3 col;
 
-       // {
+       float hit_distance_bvh = 1e20;
+       float hit_distance_sphere = 1e20;
 
-            int sphere_id = -1;
-            int triangle_id = -1;
-            int pBestTriIdx = -1;
-            int geomtype = 1;
+       float scene_t = 1e20;
 
-            float hit_distance = 1e20;
+       const Triangle* pBestTri = NULL;
+       Vector3Df pointHitInWorldSpace;
+       float kAB = 0.f, kBC = 0.f, kCA = 0.f; // distances from the 3 edges of the triangle (from where we hit it), to be used for texturing
 
-            const Triangle* pBestTri = NULL;
-            Vector3Df pointHitInWorldSpace;
-            float kAB = 0.f, kBC = 0.f, kCA = 0.f; // distances from the 3 edges of the triangle (from where we hit it), to be used for texturing
-
-            float tmin = 1e20;
-            float tmax = -1e20;
-            float d = 1e20;
-            float scene_t = 1e20;
-            float inf = 1e20;
-            Vector3Df f = Vector3Df(0, 0, 0);
-            Vector3Df emit = Vector3Df(0, 0, 0);
-            float3 x; // intersection point
-            float3 n; // normal
-            float3 nl; // oriented normal
-            Vector3Df boxnormal = Vector3Df(0, 0, 0);
-            Vector3Df dw; // ray direction of next path segment
-            Refl_t refltype;
+       float tmin = 1e20;
+       float tmax = -1e20;
+       float inf = 1e20;
+       Vector3Df f = Vector3Df(0, 0, 0);
+       Vector3Df emit = Vector3Df(0, 0, 0);
+       float3 x; // intersection point
+       float3 n; // normal
+       float3 nl; // oriented normal
+       Vector3Df boxnormal = Vector3Df(0, 0, 0);
+       Vector3Df dw; // ray direction of next path segment
 
 
             
-            Vector3Df _ray_ori = Vector3Df(r.orig.x, r.orig.y, r.orig.z);
-            Vector3Df _ray_dir = Vector3Df(r.dir.x,  r.dir.y,  r.dir.z);
+       Vector3Df _ray_ori = Vector3Df(r.orig.x, r.orig.y, r.orig.z);
+       Vector3Df _ray_dir = Vector3Df(r.dir.x,  r.dir.y,  r.dir.z);
 
-            // intersect all triangles in the scene stored in BVH
-            BVH_IntersectTriangles(
+       BVH_IntersectTriangles(
                cudaBVHindexedOrTriLists, _ray_ori, _ray_dir, avoidSelf,
-               pBestTriIdx, pointHitInWorldSpace, kAB, kBC, kCA, hit_distance, cudaBVHLimits,
+               pBestTriIdx, pointHitInWorldSpace, kAB, kBC, kCA, hit_distance_bvh, cudaBVHLimits,
                cudaTriangleIntersectionData, cudaTriIdxList, boxnormal);
 
-           //  intersect all spheres in the scene
-            float numspheres = sizeof(spheres) / sizeof(Sphere);
-            for (int i = int(numspheres); i--;) {  // for all spheres in scene
-                // keep track of distance from origin to closest intersection point
-                if ((d = spheres[i].intersect_sphere(Ray(r.orig, r.dir))) && d < scene_t)
-                {
-                    scene_t = d; 
-                    sphere_id = i; 
-                    geomtype = 1;
-                }
-            }
 
+       avoidSelf = pBestTriIdx;
 
-            if (hit_distance < scene_t && hit_distance>0.002)
+        float numspheres = sizeof(spheres) / sizeof(Sphere);
+        for (int i = int(numspheres); i--;) 
+        { 
+            if ((hit_distance_sphere = spheres[i].intersect_sphere(Ray(r.orig, r.dir))) && hit_distance_sphere < scene_t)
             {
-                scene_t = hit_distance;
-                triangle_id = pBestTriIdx;
-                geomtype = 2;
+                scene_t = hit_distance_sphere; 
+                sphere_id = i; 
+                geomtype = 1;
             }
+        }
+
+
+        if (hit_distance_bvh < scene_t && hit_distance_bvh > 0.002)
+        {
+            scene_t = hit_distance_bvh;
+            triangle_id = pBestTriIdx;
+            geomtype = 2;
+        }
              
             
-            t = scene_t;
+        t = scene_t;
 
-            if (geomtype == 1 )
-            {
-                Sphere& sphere = spheres[sphere_id]; // hit object with closest intersection
+        if (geomtype == 1 )
+        {
+            Sphere& sphere = spheres[sphere_id]; // hit object with closest intersection
 
-                const Sphere& obj = spheres[sphere_id];  // hitobject
-                x = r.orig + r.dir * t;          // hitpoint 
-                n = normalize(x - obj.pos);    // normal
-                nl = dot(n, r.dir) < 0 ? n : n * -1; // front facing normal
+            const Sphere& obj = spheres[sphere_id];  // hitobject
+            x = r.orig + r.dir * t;          // hitpoint 
+            n = normalize(x - obj.pos);    // normal
+            nl = dot(n, r.dir) < 0 ? n : n * -1; // front facing normal
 
-                accucolor += mask * obj.emi;
+            accucolor += mask * obj.emi;
 
-                col = obj.col;
+            col = obj.col;
 
-
-
-            }
-
-
-            // TRIANGLES:5
-              if (geomtype == 2)
-              {
-
-                  pBestTri = &cudaTriangles[triangle_id];
-
-                  x = make_float3(pointHitInWorldSpace.x, pointHitInWorldSpace.y, pointHitInWorldSpace.z);  // intersection point
-                  n = make_float3(pBestTri->_normal.x, pBestTri->_normal.y, pBestTri->_normal.z);  // normal
-                  //n = Vector3Df(0,0,1);
-                  n = normalize(n);
-                  nl = dot(n, make_float3(r.dir.x, r.dir.y, r.dir.z)) < 0 ? n : n * -1;  // correctly oriented normal
-
-                  col = make_float3(0.9f, 0.3f, 0.0f);
-              }
+            refltype = DIFF;
+        }
 
 
+        // TRIANGLES:5
+        if (geomtype == 2)
+        {
 
-        float r1 = 2 * M_PI * getrandom(s1, s2); // pick random number on unit circle (radius = 1, circumference = 2*Pi) for azimuth
-        float r2 = getrandom(s1, s2);  // pick random number for elevation
-        float r2s = sqrtf(r2);
+            pBestTri = &cudaTriangles[triangle_id];
 
-        // compute local orthonormal basis uvw at hitpoint to use for calculation random ray direction 
-        // first vector = normal at hitpoint, second vector is orthogonal to first, third vector is orthogonal to first two vectors
-        float3 w = nl;
-        float3 u = normalize(cross((fabs(w.x) > .1 ? make_float3(0, 1, 0) : make_float3(1, 0, 0)), w));
-        float3 v = cross(w, u);
+            x = make_float3(pointHitInWorldSpace.x, pointHitInWorldSpace.y, pointHitInWorldSpace.z);  // intersection point
+            n = make_float3(pBestTri->_normal.x, pBestTri->_normal.y, pBestTri->_normal.z);  // normal
+           
+            n = normalize(n);
+            nl = dot(n, make_float3(r.dir.x, r.dir.y, r.dir.z)) < 0 ? n : n * -1.f;  // correctly oriented normal
 
-        // compute random ray direction on hemisphere using polar coordinates
-        // cosine weighted importance sampling (favours ray directions closer to normal direction)
-        float3 new_d = normalize(u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrtf(1 - r2));
+            col = make_float3(0.9f, 0.3f, 0.0f);
 
-        // new ray origin is intersection point of previous ray with scene
-        r.orig = x + nl * 0.05f; // offset ray origin slightly to prevent self intersection
-        r.dir = new_d;
 
-        mask *= col;    // multiply with colour of object       
-        mask *= dot(new_d, nl);  // weigh light contribution using cosine of angle between incident light and normal
-        mask *= 2;          // fudge factor
-    
+            refltype = METAL;
+        }
 
-}
+        if (refltype == METAL)
+        {
+            // compute random perturbation of ideal reflection vector
+            // the higher the phong exponent, the closer the perturbed vector is to the ideal reflection direction
+            float phi = 2 * M_PI * getrandom(s1,s2);
+            float r2 = getrandom(s2, s1);
+            float phongexponent = 100;
+            float cosTheta = powf(1 - r2, 1.0f / (phongexponent + 1));
+            float sinTheta = sqrtf(1 - cosTheta * cosTheta);
+
+            // create orthonormal basis uvw around reflection vector with hitpoint as origin 
+            // w is ray direction for ideal reflection
+
+            Vector3Df rayInWorldSpace = Vector3Df(r.dir.x, r.dir.y, r.dir.z);
+            Vector3Df normal = Vector3Df(n.x, n.y, n.z);
+            Vector3Df w = rayInWorldSpace - normal * 2.0f * dot(normal, rayInWorldSpace); w.normalize();
+            Vector3Df u = cross((fabs(w.x) > .1 ? Vector3Df(0, 1, 0) : Vector3Df(1, 0, 0)), w); u.normalize();
+            Vector3Df v = cross(w, u); // v is normalised by default
+
+            // compute cosine weighted random ray direction on hemisphere 
+            dw = u * cosf(phi) * sinTheta + v * sinf(phi) * sinTheta + w * cosTheta;
+            dw.normalize();
+
+            // offset origin next path segment to prevent self intersection
+            r.orig = x;//+ w * 0.01;  // scene size dependent
+            r.dir = make_float3(dw.x,dw.y,dw.z);
+
+            // multiply mask with colour of object
+            mask *= col;
+        }
+
+
+        if (refltype == DIFF)
+        {
+            float r1 = 2 * M_PI * getrandom(s1, s2); // pick random number on unit circle (radius = 1, circumference = 2*Pi) for azimuth
+            float r2 = getrandom(s1, s2);  // pick random number for elevation
+            float r2s = sqrtf(r2);
+
+            // compute local orthonormal basis uvw at hitpoint to use for calculation random ray direction 
+            // first vector = normal at hitpoint, second vector is orthogonal to first, third vector is orthogonal to first two vectors
+            float3 w = nl;
+            float3 u = normalize(cross((fabs(w.x) > .1 ? make_float3(0, 1, 0) : make_float3(1, 0, 0)), w));
+            float3 v = cross(w, u);
+
+            // compute random ray direction on hemisphere using polar coordinates
+            // cosine weighted importance sampling (favours ray directions closer to normal direction)
+            float3 new_d = normalize(u * cos(r1) * r2s + v * sin(r1) * r2s + w * sqrtf(1 - r2));
+
+            // new ray origin is intersection point of previous ray with scene
+            r.orig = x + nl * 0.05f; // offset ray origin slightly to prevent self intersection
+            r.dir = new_d;
+
+            mask *= col;    // multiply with colour of object       
+            mask *= dot(new_d, nl);  // weigh light contribution using cosine of angle between incident light and normal
+            mask *= 2;          // fudge factor
+
+        }
+
+    }
 
     return accucolor;
 }

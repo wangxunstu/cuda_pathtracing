@@ -60,17 +60,15 @@ C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\include\crt\math_functi
   
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\include\crt\math_functions.hpp(1051): warning : unrecognized #pragma in device code
   
-e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(441): warning : variable "sphere" was declared but never referenced
+e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(428): warning : variable "sphere" was declared but never referenced
   
-e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(354): warning : variable "id" was declared but never referenced
+e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(367): warning : variable "id" was declared but never referenced
   
-e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(371): warning : variable "tmin" was declared but never referenced
+e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(380): warning : variable "tmin" was declared but never referenced
   
-e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(372): warning : variable "tmax" was declared but never referenced
+e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(381): warning : variable "tmax" was declared but never referenced
   
-e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(375): warning : variable "inf" was declared but never referenced
-  
-e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(383): warning : variable "refltype" was declared but never referenced
+e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(382): warning : variable "inf" was declared but never referenced
   
 e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(35): warning : variable "host_image" was set but never used
   
@@ -97,7 +95,7 @@ C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\include\cuda_runtime_ap
 C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.2\include\cuda_runtime_api.h(9349): warning C4819: The file contains a character that cannot be represented in the current code page (936). Save the file in Unicode format to prevent data loss
 C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v10.2/include\cuda.h(13166): warning C4819: The file contains a character that cannot be represented in the current code page (936). Save the file in Unicode format to prevent data loss
   pathtrace.cu
-e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(571): warning C4305: 'argument': truncation from 'double' to 'float'
+e:\cuda_pathtracing\cuda_pathtracing\pathtrace.cu(590): warning C4305: 'argument': truncation from 'double' to 'float'
      Creating library E:\cuda_pathtracing\x64\Release\cuda_pathtracing.lib and object E:\cuda_pathtracing\x64\Release\cuda_pathtracing.exp
 LINK : warning LNK4098: defaultlib 'LIBCMT' conflicts with use of other libs; use /NODEFAULTLIB:library
   Generating code
@@ -105,5 +103,5 @@ LINK : warning LNK4098: defaultlib 'LIBCMT' conflicts with use of other libs; us
     0 functions were new in current compilation
     0 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
-glew32s.lib(glew.obj) : warning LNK4099: PDB '' was not found with 'glew32s.lib(glew.obj)' or at ''; linking object as if no debug info
+glew32s.lib(glew.obj) : warning LNK4099: PDB 'vc120.pdb' was not found with 'glew32s.lib(glew.obj)' or at 'E:\cuda_pathtracing\x64\Release\vc120.pdb'; linking object as if no debug info
   cuda_pathtracing.vcxproj -> E:\cuda_pathtracing\x64\Release\cuda_pathtracing.exe
