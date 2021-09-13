@@ -1,8 +1,37 @@
-﻿     Creating library D:\zproject\cuda_pathtracing\x64\Release\cuda_pathtracing.lib and object D:\zproject\cuda_pathtracing\x64\Release\cuda_pathtracing.exp
+﻿  Compiling CUDA source file pathtrace.cu...
+  
+  D:\zproject\cuda_pathtracing\cuda_pathtracing>"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0\bin\nvcc.exe" -gencode=arch=compute_52,code=\"sm_52,compute_52\" --use-local-env -ccbin "C:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.27.29110\bin\HostX86\x64" -x cu   -ID:\zproject\cuda_pathtracing\cuda_pathtracing\\external\include -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0\include" -I"C:\Program Files (x86)\Visual Leak Detector\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0\include" -I"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v11.0\include"     --keep-dir x64\Release -maxrregcount=0  --machine 64 --compile -cudart static     -D_CRT_SECURE_NO_WARNINGS -D_WINDOWS -DCUDA_COMPUTE_75 -DGLEW_STATIC -DWIN32 -DWIN64 -DNDEBUG -D_CONSOLE -D_MBCS -Xcompiler "/EHsc /W3 /nologo /O2 /Fdx64\Release\vc142.pdb /FS /Zi  /MD " -o x64\Release\pathtrace.cu.obj "D:\zproject\cuda_pathtracing\cuda_pathtracing\pathtrace.cu" 
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(445): warning : variable "t" was declared but never referenced
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(446): warning : variable "id" was declared but never referenced
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(451): warning : variable "hit_distance_sphere" was declared but never referenced
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(453): warning : variable "scene_t" was set but never used
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(459): warning : variable "tmin" was declared but never referenced
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(460): warning : variable "tmax" was declared but never referenced
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(461): warning : variable "inf" was declared but never referenced
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(434): warning : variable "sphere_id" was declared but never referenced
+  
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(35): warning : variable "host_image" was set but never used
+  
+  pathtrace.cu
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(61): warning C4305: 'initializing': truncation from 'double' to 'float'
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(680): warning C4305: 'argument': truncation from 'double' to 'float'
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(726): warning C4996: 'cudaBindTexture': was declared deprecated
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(729): warning C4996: 'cudaBindTexture': was declared deprecated
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(732): warning C4996: 'cudaBindTexture': was declared deprecated
+D:/zproject/cuda_pathtracing/cuda_pathtracing/pathtrace.cu(736): warning C4996: 'cudaBindTexture': was declared deprecated
+     Creating library D:\zproject\cuda_pathtracing\x64\Release\cuda_pathtracing.lib and object D:\zproject\cuda_pathtracing\x64\Release\cuda_pathtracing.exp
 LINK : warning LNK4098: defaultlib 'LIBCMT' conflicts with use of other libs; use /NODEFAULTLIB:library
   Generating code
-  Previous IPDB not found, fall back to full compilation.
-  All 382 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  0 of 382 functions ( 0.0%) were compiled, the rest were copied from previous compilation.
+    0 functions were new in current compilation
+    0 functions had inline decision re-evaluated but remain unchanged
   Finished generating code
 glew32s.lib(glew.obj) : warning LNK4099: PDB 'vc120.pdb' was not found with 'glew32s.lib(glew.obj)' or at 'D:\zproject\cuda_pathtracing\x64\Release\vc120.pdb'; linking object as if no debug info
   cuda_pathtracing.vcxproj -> D:\zproject\cuda_pathtracing\x64\Release\cuda_pathtracing.exe

@@ -22,7 +22,7 @@
 #include <device_launch_parameters.h>
 
 #define M_PI 3.14159265359f  // pi
-#define samps 512 // samples 
+#define samps 16 // samples 
 
 #define bounce 4
 
@@ -43,10 +43,28 @@ texture<float4, 1, cudaReadModeElementType> g_trianglesTexture;
 
 
 
-struct Ray {
+struct Ray 
+{
     float3 orig; 
     float3 dir;   
     __device__ Ray(float3 o_, float3 d_) : orig(o_), dir(d_) {}
+};
+
+
+struct Intersection
+{
+    float3     pos;
+    float3     uv;
+    float3     normal;
+    float3     emit;
+    float3     color;
+    float      t = 1e20;
+    bool       happened = false;
+
+    __device__ Intersection(float3 _pos, float3 _uv, float3 _normal,float3 _color,  float3 _emit,
+        float _t, bool _happped):pos(_pos),uv(_uv),normal(_normal),color(_color),emit(_emit),t(_t),happened(_happped) {}
+
+    __device__ Intersection() {}
 };
 
 enum Refl_t { DIFF, SPEC, REFR ,METAL};
@@ -58,15 +76,69 @@ struct Sphere
     float3 pos, emi, col; // position, emission, colour 
     Refl_t refl;          // reflection type (e.g. diffuse)
 
-    __device__ float intersect_sphere(const Ray& r) const 
+    __device__ Intersection intersect_sphere(const Ray& r) const 
     {
-        float3 op = pos - r.orig;    // distance from ray.orig to center sphere 
-        float t, epsilon = 0.0001f;  // epsilon required to prevent floating point precision artefacts
-        float b = dot(op, r.dir);    // b in quadratic equation
-        float disc = b * b - dot(op, op) + rad * rad;  // discriminant quadratic equation
-        if (disc < 0) return 0;       // if disc < 0, no real solution (we're not interested in complex roots) 
-        else disc = sqrtf(disc);    // if disc >= 0, check for solutions using negative and positive discriminant
-        return (t = b - disc) > epsilon ? t : ((t = b + disc) > epsilon ? t : 0); // pick closest point in front of ray origin
+        Intersection result;
+
+        float3 op = r.orig - pos;
+
+        //float A = dot(r.d, r.d); //r.d is normalized
+        float B = dot(op, r.dir);
+        float C = dot(op, op) - rad * rad;
+
+        float delta = B * B - C;
+        if (delta < 0.f)
+            return result;
+
+        float sqrDelta = sqrtf(delta);
+        float t1 = -B - sqrDelta;
+        float t2 = -B + sqrDelta;
+
+        //shape behind ray
+        if (t1 < 0.f && t2 < 0.f)
+            return result;
+        //- +  t1 = + t2 = -
+        //+ + 
+        if (t1 < 0.f || t2 < 0.f) {
+            float tt1 = t1, tt2 = t2;
+            t1 = tt1 < 0.f ? tt2 : tt1;
+            t2 = tt1 < 0.f ? tt1 : tt2;
+        }
+        else {
+            float temp;
+            if (t1 > t2) {
+                temp = t2;
+                t2 = t1;
+                t1 = temp;
+            }
+        }
+
+        if (t1 > 1e20)
+            return result;
+
+        float t = -1.0;
+        if (t1 > 0.0001)
+        {
+            t = t1;
+        }
+        else if (t2 > 0.0001)
+        {
+            t = t2;
+        }
+        else 
+        {
+            return result;
+        }
+
+
+         result.t = t;
+         result.happened = true;
+         result.emit = emi;
+         result.pos = r.orig + t * r.dir;
+         result.color = col;
+         result.normal = normalize(result.pos - pos);
+
+        return result;
     }
 };
 
@@ -74,7 +146,7 @@ struct Sphere
 
 __device__ Sphere spheres[] = {
 
-    { 16.f, { 0.0f,100.8, 0 }, { 6, 4, 2 }, { 0.f, 0.f, 0.f }, DIFF },  // 37, 34, 30  X: links rechts Y: op neer
+    { 16.f, { 0.0f,100.8, 0 }, { 60, 40, 20 }, { 0.f, 0.f, 0.f }, DIFF },  // 37, 34, 30  X: links rechts Y: op neer
 
     { 10000, { 50.0f, 40.8f, -1060 }, { 0.51, 0.51, 0.51 }, { 0.175f, 0.175f, 0.25f }, DIFF },
 
@@ -82,16 +154,23 @@ __device__ Sphere spheres[] = {
 };
 
 
-__device__ inline bool intersect_scene(const Ray& r, float& t, int& id) 
+__device__ inline Intersection intersect_scene(const Ray& r) 
 {
 
-    float n = sizeof(spheres) / sizeof(Sphere), d, inf = t = 1e20;
-    for (int i = int(n); i--;)  
-        if ((d = spheres[i].intersect_sphere(r)) && d < t) { 
-            t = d;  
-            id = i; 
+    float n = sizeof(spheres) / sizeof(Sphere);
+
+    Intersection result;
+
+    for (int i = int(n); i--;) 
+    {
+        Intersection p = spheres[i].intersect_sphere(r);
+
+        if (p.happened && p.t < result.t)
+        {
+            result = p;
         }
-    return t < inf;
+    }
+    return result;
 }
 
 __device__ static float getrandom(unsigned int* seed0, unsigned int* seed1) {
@@ -401,19 +480,30 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
 
        avoidSelf = pBestTriIdx;
 
-        float numspheres = sizeof(spheres) / sizeof(Sphere);
-        for (int i = int(numspheres); i--;) 
-        { 
-            if ((hit_distance_sphere = spheres[i].intersect_sphere(Ray(r.orig, r.dir))) && hit_distance_sphere < scene_t)
-            {
-                scene_t = hit_distance_sphere; 
-                sphere_id = i; 
-                geomtype = 1;
-            }
-        }
+       Intersection intersection_sphere = intersect_scene(r);
+
+       //float numspheres = sizeof(spheres) / sizeof(Sphere);
+       //for (int i = int(numspheres); i--;) 
+       //{ 
+       //
+       //    Intersection p = spheres[i].intersect_sphere(r);
+       //
+       //
+       //    if ((hit_distance_sphere = spheres[i].intersect_sphere(Ray(r.orig, r.dir))) && hit_distance_sphere < scene_t)
+       //    {
+       //        scene_t = hit_distance_sphere; 
+       //        sphere_id = i; 
+       //        geomtype = 1;
+       //    }
+       //}
+
+       if (intersection_sphere.happened)
+       {
+           geomtype = 1;
+       }
 
 
-        if (hit_distance_bvh < scene_t && hit_distance_bvh > 0.002)
+        if (hit_distance_bvh < intersection_sphere.t && hit_distance_bvh > 0.002)
         {
             scene_t = hit_distance_bvh;
             triangle_id = pBestTriIdx;
@@ -421,20 +511,20 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
         }
              
             
-        t = scene_t;
+        //t = scene_t;
 
-        if (geomtype == 1 )
+        if (geomtype == 1)
         {
-            Sphere& sphere = spheres[sphere_id]; // hit object with closest intersection
+            //Sphere& sphere = spheres[sphere_id]; // hit object with closest intersection
 
-            const Sphere& obj = spheres[sphere_id];  // hitobject
-            x = r.orig + r.dir * t;          // hitpoint 
-            n = normalize(x - obj.pos);    // normal
-            nl = dot(n, r.dir) < 0 ? n : n * -1; // front facing normal
+            //const Sphere& obj = spheres[sphere_id];  // hitobject
+            x = intersection_sphere.pos;                  // hitpoint 
+            n = intersection_sphere.normal;               //normalize(x - intersection_sphere.pos);    // normal
+            nl = dot(n, r.dir) < 0 ? n : n * -1;          // front facing normal
 
-            accucolor += mask * obj.emi;
+            accucolor += mask * intersection_sphere.emit;
 
-            col = obj.col;
+            col = intersection_sphere.color;
 
             refltype = DIFF;
         }
@@ -455,7 +545,7 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
             col = make_float3(0.9f, 0.3f, 0.0f);
 
 
-            refltype = METAL;
+            refltype = DIFF;
         }
 
         if (refltype == METAL)
@@ -512,7 +602,7 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
 
             mask *= col;    // multiply with colour of object       
             mask *= dot(new_d, nl);  // weigh light contribution using cosine of angle between incident light and normal
-            mask *= 2;          // fudge factor
+            mask  = mask/(0.5f*M_PI);          // fudge factor
 
         }
 
