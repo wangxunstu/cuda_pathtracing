@@ -22,7 +22,7 @@
 #include <device_launch_parameters.h>
 
 #define M_PI 3.14159265359f  // pi
-#define samps 16 // samples 
+#define samps 256 // samples 
 
 #define bounce 4
 
@@ -61,8 +61,9 @@ struct Intersection
     float      t = 1e20;
     bool       happened = false;
 
-    __device__ Intersection(float3 _pos, float3 _uv, float3 _normal,float3 _color,  float3 _emit,
-        float _t, bool _happped):pos(_pos),uv(_uv),normal(_normal),color(_color),emit(_emit),t(_t),happened(_happped) {}
+    float      kAB; 
+    float      kBC; 
+    float      kCA;
 
     __device__ Intersection() {}
 };
@@ -262,7 +263,7 @@ __device__ bool RayIntersectsBox(const Vector3Df& originInWorldSpace, const Vect
 
 __device__ bool BVH_IntersectTriangles(
     int* cudaBVHindexesOrTrilists, const Vector3Df& origin, const Vector3Df& ray, unsigned avoidSelf,
-    int& pBestTriIdx, Vector3Df& pointHitInWorldSpace, float& kAB, float& kBC, float& kCA, float& hitdist,
+    int& pBestTriIdx,Intersection& intersection,
     float* cudaBVHlimits, float* cudaTriangleIntersectionData, int* cudaTriIdxList, Vector3Df& boxnormal)
 {
     // in the loop below, maintain the closest triangle and the point where we hit it:
@@ -279,6 +280,13 @@ __device__ bool BVH_IntersectTriangles(
     int stackIdx = 0;
     stack[stackIdx++] = 0;
     Vector3Df hitpoint;
+
+
+    float kAB, kBC, kCA;
+    float hitdist;
+
+    Vector3Df pointHitInWorldSpace;
+
 
     // while the stack is not empty
     while (stackIdx) {
@@ -415,6 +423,20 @@ __device__ bool BVH_IntersectTriangles(
                     }
                 }
             }
+
+
+            intersection.pos      = make_float3(pointHitInWorldSpace.x, pointHitInWorldSpace.y, pointHitInWorldSpace.z);
+            intersection.color    = make_float3(0.9, 0.3, 0.0);
+            intersection.happened = true;
+            intersection.kAB      = kAB;
+            intersection.kBC      = kBC;
+            intersection.kCA      = kCA;
+            intersection.t        = hitdist;
+
+          
+            float4 normal = tex1Dfetch(g_trianglesTexture, 5 * pBestTriIdx + 1);
+            intersection.normal = make_float3(normal.x, normal.y, normal.z);
+
         }
     }
 
@@ -453,7 +475,7 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
        float scene_t = 1e20;
 
        const Triangle* pBestTri = NULL;
-       Vector3Df pointHitInWorldSpace;
+ //      Vector3Df pointHitInWorldSpace;
        float kAB = 0.f, kBC = 0.f, kCA = 0.f; // distances from the 3 edges of the triangle (from where we hit it), to be used for texturing
 
        float tmin = 1e20;
@@ -472,30 +494,18 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
        Vector3Df _ray_ori = Vector3Df(r.orig.x, r.orig.y, r.orig.z);
        Vector3Df _ray_dir = Vector3Df(r.dir.x,  r.dir.y,  r.dir.z);
 
+       Intersection intersection_bvh;
+
        BVH_IntersectTriangles(
                cudaBVHindexedOrTriLists, _ray_ori, _ray_dir, avoidSelf,
-               pBestTriIdx, pointHitInWorldSpace, kAB, kBC, kCA, hit_distance_bvh, cudaBVHLimits,
+               pBestTriIdx, intersection_bvh, cudaBVHLimits,
                cudaTriangleIntersectionData, cudaTriIdxList, boxnormal);
 
+       hit_distance_bvh = intersection_bvh.t;
 
        avoidSelf = pBestTriIdx;
 
        Intersection intersection_sphere = intersect_scene(r);
-
-       //float numspheres = sizeof(spheres) / sizeof(Sphere);
-       //for (int i = int(numspheres); i--;) 
-       //{ 
-       //
-       //    Intersection p = spheres[i].intersect_sphere(r);
-       //
-       //
-       //    if ((hit_distance_sphere = spheres[i].intersect_sphere(Ray(r.orig, r.dir))) && hit_distance_sphere < scene_t)
-       //    {
-       //        scene_t = hit_distance_sphere; 
-       //        sphere_id = i; 
-       //        geomtype = 1;
-       //    }
-       //}
 
        if (intersection_sphere.happened)
        {
@@ -509,18 +519,16 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
             triangle_id = pBestTriIdx;
             geomtype = 2;
         }
+
+
              
             
-        //t = scene_t;
 
         if (geomtype == 1)
         {
-            //Sphere& sphere = spheres[sphere_id]; // hit object with closest intersection
-
-            //const Sphere& obj = spheres[sphere_id];  // hitobject
-            x = intersection_sphere.pos;                  // hitpoint 
-            n = intersection_sphere.normal;               //normalize(x - intersection_sphere.pos);    // normal
-            nl = dot(n, r.dir) < 0 ? n : n * -1;          // front facing normal
+            x = intersection_sphere.pos;                  
+            n = intersection_sphere.normal;               
+            nl = dot(n, r.dir) < 0 ? n : n * -1;          
 
             accucolor += mask * intersection_sphere.emit;
 
@@ -533,17 +541,12 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
         // TRIANGLES:5
         if (geomtype == 2)
         {
-
-            pBestTri = &cudaTriangles[triangle_id];
-
-            x = make_float3(pointHitInWorldSpace.x, pointHitInWorldSpace.y, pointHitInWorldSpace.z);  // intersection point
-            n = make_float3(pBestTri->_normal.x, pBestTri->_normal.y, pBestTri->_normal.z);  // normal
+            x = intersection_bvh.pos;    
+            n = normalize(intersection_bvh.normal); 
            
-            n = normalize(n);
             nl = dot(n, make_float3(r.dir.x, r.dir.y, r.dir.z)) < 0 ? n : n * -1.f;  // correctly oriented normal
 
-            col = make_float3(0.9f, 0.3f, 0.0f);
-
+            col = intersection_bvh.color;
 
             refltype = DIFF;
         }
