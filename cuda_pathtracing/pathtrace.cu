@@ -501,29 +501,26 @@ __device__ float3 radiance(Ray& r, int avoidSelf, unsigned int* s1, unsigned int
                pBestTriIdx, intersection_bvh, cudaBVHLimits,
                cudaTriangleIntersectionData, cudaTriIdxList, boxnormal);
 
-       hit_distance_bvh = intersection_bvh.t;
 
        avoidSelf = pBestTriIdx;
 
        Intersection intersection_sphere = intersect_scene(r);
+
 
        if (intersection_sphere.happened)
        {
            geomtype = 1;
        }
 
-
-        if (hit_distance_bvh < intersection_sphere.t && hit_distance_bvh > 0.002)
+        if (intersection_bvh.t < intersection_sphere.t && intersection_bvh.t > 0.002)
         {
-            scene_t = hit_distance_bvh;
+            scene_t = intersection_bvh.t;
             triangle_id = pBestTriIdx;
             geomtype = 2;
         }
 
 
-             
-            
-
+         
         if (geomtype == 1)
         {
             x = intersection_sphere.pos;                  
